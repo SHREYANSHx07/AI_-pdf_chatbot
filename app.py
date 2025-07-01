@@ -1,5 +1,4 @@
 import streamlit as st
-from dotenv import load_dotenv
 from PyPDF2 import PdfReader
 from langchain.text_splitter import CharacterTextSplitter
 from langchain.vectorstores import FAISS
@@ -10,11 +9,13 @@ from langchain.embeddings import HuggingFaceInstructEmbeddings
 from langchain_google_genai import ChatGoogleGenerativeAI
 import os
 
-
-from InstructorEmbedding import INSTRUCTOR
-model = INSTRUCTOR("hkunlp/instructor-large")
-# Load environment variables
-load_dotenv()
+# Load environment variables (optional for deployment)
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    # dotenv not available in production deployment
+    pass
 
 def get_pdf_text(pdf_docs):
     """Extract text from uploaded PDF documents"""
@@ -47,7 +48,7 @@ def get_conversation_chain(vectorstore):
     # Initialize Gemini LLM
     llm = ChatGoogleGenerativeAI(
         model="gemini-1.5-flash",
-        google_api_key=os.getenv("AIzaSyAftIATi4htA6xjvTEV74bRhu3fWvYbVhA"),
+        google_api_key=os.getenv("GOOGLE_API_KEY"),
         temperature=0.3,
         convert_system_message_to_human=True
     )
@@ -82,8 +83,6 @@ def handle_userinput(user_question):
         st.error("Please make sure your Google API key is valid and you have processed the PDFs.")
 
 def main():
-    load_dotenv()
-    
     # Page configuration
     st.set_page_config(
         page_title="Chat with multiple PDFs", 
