@@ -1,0 +1,73 @@
+# Production-ready requirements for deployment and local development
+# Optimized for compatibility across platforms and Python versions
+
+# ====== CORE APPLICATION FRAMEWORK ======
+streamlit>=1.25.0,<2.0.0
+
+# ====== LANGCHAIN ECOSYSTEM ======
+langchain>=0.0.300,<1.0.0
+langchain-community>=0.0.15,<1.0.0
+langchain-core>=0.1.15,<1.0.0
+langchain-google-genai>=0.0.5,<1.0.0
+
+# ====== DOCUMENT PROCESSING ======
+PyPDF2>=2.0.0,<4.0.0
+
+# ====== ENVIRONMENT & CONFIGURATION ======
+python-dotenv>=0.19.0,<2.0.0
+
+# ====== VECTOR SEARCH & EMBEDDINGS ======
+faiss-cpu>=1.7.0,<1.8.0
+
+# ====== GOOGLE AI SERVICES ======
+# Core Google AI packages with stable versions
+google-generativeai>=0.3.0,<1.0.0
+google-ai-generativelanguage>=0.3.0,<1.0.0
+google-api-core>=2.8.0,<3.0.0
+google-auth>=2.16.0,<3.0.0
+googleapis-common-protos>=1.56.0,<2.0.0
+
+# Platform-compatible gRPC (critical for deployment)
+grpcio>=1.48.0,<1.65.0; platform_machine != "arm64" or python_version >= "3.10"
+grpcio>=1.48.0,<1.63.0; platform_machine == "arm64" and python_version < "3.10"
+
+# ====== TEXT PROCESSING & TOKENIZATION ======
+tiktoken>=0.4.0,<1.0.0
+
+# ====== HUGGINGFACE ECOSYSTEM ======
+huggingface-hub>=0.14.0,<1.0.0
+InstructorEmbedding>=1.0.0,<2.0.0
+sentence-transformers>=2.2.0,<3.0.0
+sentencepiece>=0.1.99,<1.0.0
+
+# ====== CORE ML/AI DEPENDENCIES ======
+# PyTorch with broad compatibility
+torch>=1.11.0,<2.2.0; sys_platform != "darwin"
+torch>=1.11.0,<2.2.0; sys_platform == "darwin" and platform_machine != "arm64"
+torch>=1.13.0,<2.2.0; sys_platform == "darwin" and platform_machine == "arm64"
+
+# Transformers with stability focus
+transformers>=4.21.0,<5.0.0
+
+# Scientific computing stack
+numpy>=1.21.0,<1.26.0
+scipy>=1.9.0,<2.0.0
+scikit-learn>=1.1.0,<2.0.0
+Pillow>=8.3.0,<11.0.0
+
+# ====== ADDITIONAL STABILITY PACKAGES ======
+# Ensure stable HTTP handling
+requests>=2.28.0,<3.0.0
+urllib3>=1.26.0,<2.0.0
+
+# Async support
+aiohttp>=3.8.0,<4.0.0
+
+# JSON handling
+orjson>=3.8.0,<4.0.0
+
+# ====== DEPLOYMENT NOTES ======
+# - Use Python 3.9+ for best compatibility
+# - For ARM64 macOS, some packages may show warnings but will work
+# - For cloud deployment (Heroku, Railway, etc.), all constraints are tested
+# - Platform-specific constraints handle ARM64/x86 differences automatically
