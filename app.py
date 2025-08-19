@@ -163,17 +163,34 @@
 #     main()
 
 import streamlit as st
-from PyPDF2 import PdfReader
-from langchain.text_splitter import CharacterTextSplitter
-# from langchain.vectorstores import FAISS
-from langchain.memory import ConversationBufferMemory
-from langchain.chains import ConversationalRetrievalChain
-from htmlTemplates import css, bot_template, user_template
-from langchain_community.vectorstores import FAISS
-from langchain_community.embeddings import HuggingFaceEmbeddings
-# from langchain.embeddings import HuggingFaceEmbeddings
-from langchain_google_genai import ChatGoogleGenerativeAI
 import os
+
+# Import with error handling
+try:
+    from PyPDF2 import PdfReader
+except ImportError as e:
+    st.error(f"Failed to import PyPDF2: {e}")
+    st.error("Please check the requirements.txt file and ensure PyPDF2 is installed.")
+    st.stop()
+
+try:
+    from langchain.text_splitter import CharacterTextSplitter
+    from langchain.memory import ConversationBufferMemory
+    from langchain.chains import ConversationalRetrievalChain
+    from langchain_community.vectorstores import FAISS
+    from langchain_community.embeddings import HuggingFaceEmbeddings
+    from langchain_google_genai import ChatGoogleGenerativeAI
+except ImportError as e:
+    st.error(f"Failed to import LangChain components: {e}")
+    st.error("Please check the requirements.txt file and ensure all LangChain packages are installed.")
+    st.stop()
+
+try:
+    from htmlTemplates import css, bot_template, user_template
+except ImportError as e:
+    st.error(f"Failed to import htmlTemplates: {e}")
+    st.error("Make sure htmlTemplates.py is in the same directory as app.py")
+    st.stop()
 
 # Load environment variables (optional for deployment)
 try:
