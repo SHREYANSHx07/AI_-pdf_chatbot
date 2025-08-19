@@ -213,9 +213,16 @@ def get_vectorstore(text_chunks):
 
 def get_conversation_chain(vectorstore):
     """Create conversation chain using Gemini LLM"""
+    # Try to get API key from Streamlit secrets first (for deployment), then from environment
+    api_key = None
+    try:
+        api_key = st.secrets["GOOGLE_API_KEY"]
+    except (KeyError, FileNotFoundError):
+        api_key = os.getenv("GOOGLE_API_KEY")
+    
     llm = ChatGoogleGenerativeAI(
         model="gemini-1.5-flash",
-        google_api_key=os.getenv("GOOGLE_API_KEY"),
+        google_api_key=api_key,
         temperature=0.3,
         convert_system_message_to_human=True
     )
@@ -269,8 +276,17 @@ def main():
     st.header("Chat with multiple PDFs :books:")
     st.markdown("*Powered by Google Gemini AI*")
 
-    if not os.getenv("GOOGLE_API_KEY"):
-        st.error("⚠️ Please set your GOOGLE_API_KEY in the .env file")
+    # Check if Google API key is available (from Streamlit secrets or environment)
+    api_key = None
+    try:
+        api_key = st.secrets["GOOGLE_API_KEY"]
+    except (KeyError, FileNotFoundError):
+        api_key = os.getenv("GOOGLE_API_KEY")
+    
+    if not api_key:
+        st.error("⚠️ Please set your GOOGLE_API_KEY")
+        st.info("For local development: Add to .env file")
+        st.info("For Streamlit Cloud: Add to secrets management")
         st.info("Get your API key from: https://makersuite.google.com/app/apikey")
         return
 
