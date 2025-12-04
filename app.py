@@ -356,252 +356,184 @@
 # if __name__ == '__main__':
 #     main()
 
-# app.py (langchain-core variant)
 import streamlit as st
 import os
 
-# ---------- Dependency imports ----------
+# =======================
+# Import dependencies
+# =======================
+
 try:
     from PyPDF2 import PdfReader
 except ImportError as e:
     st.error(f"Failed to import PyPDF2: {e}")
     st.stop()
 
-# text splitters (split package)
 try:
     from langchain_text_splitters import CharacterTextSplitter
-except Exception as e:
-    st.error(f"Missing langchain_text_splitters: {e}")
-    st.error("Add langchain-text-splitters to requirements.txt")
-    st.stop()
+except Exception:
+    try:
+        from langchain.text_splitter import CharacterTextSplitter
+    except Exception as e:
+        st.error(f"Failed to import CharacterTextSplitter: {e}")
+        st.stop()
 
-# memory: new split architecture (langchain-core)
+# CLASSIC LANGCHAIN MEMORY (works!)
 try:
-    from langchain_core.memory import ConversationBufferMemory
+    from langchain.memory import ConversationBufferMemory
 except Exception as e:
-    st.error(f"Missing langchain_core.memory: {e}")
-    st.error("Add langchain-core to requirements.txt")
+    st.error(f"Failed to import ConversationBufferMemory: {e}")
+    st.error("Make sure 'langchain' is installed.")
     st.stop()
 
-# chains (still in langchain)
 try:
     from langchain.chains import ConversationalRetrievalChain
 except Exception as e:
-    st.error(f"Missing langchain.chains: {e}")
-    st.error("Add a compatible langchain package (but do NOT include the top-level 'langchain' if using incompatible versions).")
+    st.error(f"Failed to import ConversationalRetrievalChain: {e}")
     st.stop()
 
-# community vectorstores & embeddings
 try:
     from langchain_community.vectorstores import FAISS
     from langchain_community.embeddings import HuggingFaceEmbeddings
 except Exception as e:
-    st.error(f"Missing langchain_community modules: {e}")
-    st.error("Add langchain-community to requirements.txt")
+    st.error("Install langchain-community package")
     st.stop()
 
-# Google wrapper (third-party)
 try:
     from langchain_google_genai import ChatGoogleGenerativeAI
 except Exception as e:
-    st.error(f"Missing ChatGoogleGenerativeAI wrapper: {e}")
-    st.error("Install the wrapper you use for Google Generative AI (e.g. langchain-google-genai) and ensure its name matches.")
+    st.error("Install langchain-google-genai")
     st.stop()
 
-# html templates
 try:
     from htmlTemplates import css, bot_template, user_template
-except Exception as e:
-    st.error(f"Failed to import htmlTemplates: {e}")
-    st.stop()
+except:
+    css = bot_template = user_template = ""
 
-# optional dotenv
 try:
     from dotenv import load_dotenv
     load_dotenv()
-except Exception:
+except:
     pass
 
 
-# ---------- Helper functions ----------
+# =======================
+# Helper Functions
+# =======================
+
 def get_pdf_text(pdf_docs):
     text = ""
     for pdf in pdf_docs:
         pdf_reader = PdfReader(pdf)
         for page in pdf_reader.pages:
-            try:
-                page_text = page.extract_text()
-            except Exception:
-                page_text = None
-            if page_text:
-                text += page_text + "\n"
+            t = page.extract_text()
+            if t:
+                text += t
     return text
 
 
-def get_text_chunks(text, chunk_size=1000, chunk_overlap=200):
+def get_text_chunks(text):
     splitter = CharacterTextSplitter(
-        separator="\n",
-        chunk_size=chunk_size,
-        chunk_overlap=chunk_overlap,
-        length_function=len
+        separator="\n", chunk_size=1000, chunk_overlap=200
     )
-    try:
-        return splitter.split_text(text)
-    except Exception:
-        # basic fallback chunking
-        chunks = []
-        start = 0
-        while start < len(text):
-            end = min(start + chunk_size, len(text))
-            chunks.append(text[start:end])
-            if end == len(text):
-                break
-            start = end - chunk_overlap
-        return chunks
+    return splitter.split_text(text)
 
 
-def get_vectorstore(text_chunks, hf_model_name="sentence-transformers/all-MiniLM-L6-v2"):
-    embeddings = HuggingFaceEmbeddings(model_name=hf_model_name)
-    try:
-        vs = FAISS.from_texts(texts=text_chunks, embedding=embeddings)
-    except TypeError:
-        vs = FAISS.from_texts(texts=text_chunks, embeddings=embeddings)
-    return vs
+def get_vectorstore(chunks):
+    embedder = HuggingFaceEmbeddings(
+        model_name="sentence-transformers/all-MiniLM-L6-v2"
+    )
+    return FAISS.from_texts(chunks, embedder)
 
 
 def get_conversation_chain(vectorstore):
-    api_key = None
+    api_key = os.getenv("GOOGLE_API_KEY")
     try:
         api_key = st.secrets["GOOGLE_API_KEY"]
-    except Exception:
-        api_key = os.getenv("GOOGLE_API_KEY")
+    except:
+        pass
 
     if not api_key:
-        st.error("⚠️ GOOGLE_API_KEY not found in secrets or environment.")
+        st.error("Add GOOGLE_API_KEY to Streamlit Secrets or .env")
         st.stop()
 
-    try:
-        llm = ChatGoogleGenerativeAI(
-            model="gemini-2.5-flash",
-            google_api_key=api_key,
-            temperature=0.3,
-            convert_system_message_to_human=True
-        )
-    except Exception as e:
-        st.error(f"Failed to initialize ChatGoogleGenerativeAI: {e}")
-        st.stop()
+    llm = ChatGoogleGenerativeAI(
+        model="gemini-2.5-flash",
+        google_api_key=api_key,
+        temperature=0.3
+    )
 
-    memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
+    memory = ConversationBufferMemory(
+        memory_key="chat_history",
+        return_messages=True
+    )
 
-    try:
-        conv = ConversationalRetrievalChain.from_llm(
-            llm=llm,
-            retriever=vectorstore.as_retriever(),
-            memory=memory
-        )
-    except Exception as e:
-        st.error(f"Failed to build ConversationalRetrievalChain: {e}")
-        st.stop()
-
-    return conv
-
-
-def _display_chat_history(chat_history):
-    if not chat_history:
-        return
-    for i, message in enumerate(chat_history):
-        content = getattr(message, "content", message if isinstance(message, str) else str(message))
-        if i % 2 == 0:
-            st.write(user_template.replace("{{MSG}}", content), unsafe_allow_html=True)
-        else:
-            st.write(bot_template.replace("{{MSG}}", content), unsafe_allow_html=True)
+    return ConversationalRetrievalChain.from_llm(
+        llm=llm,
+        retriever=vectorstore.as_retriever(),
+        memory=memory
+    )
 
 
 def handle_userinput(user_question):
     try:
         response = st.session_state.conversation({"question": user_question})
+        chat_history = response["chat_history"]
+
+        for i, msg in enumerate(chat_history):
+            if i % 2 == 0:
+                st.write(user_template.replace("{{MSG}}", msg.content),
+                         unsafe_allow_html=True)
+            else:
+                st.write(bot_template.replace("{{MSG}}", msg.content),
+                         unsafe_allow_html=True)
+
     except Exception as e:
-        st.error(f"Conversation call failed: {e}")
-        return
-
-    if isinstance(response, dict):
-        answer = response.get("answer") or response.get("result") or response.get("output")
-        history = response.get("chat_history") or response.get("history")
-    else:
-        answer = str(response)
-        history = None
-
-    if answer:
-        st.write(bot_template.replace("{{MSG}}", str(answer)), unsafe_allow_html=True)
-
-    if history:
-        st.session_state.chat_history = history
-        _display_chat_history(history)
-    else:
-        _display_chat_history(st.session_state.get("chat_history"))
+        st.error(f"Error: {e}")
 
 
-# ---------- Streamlit app ----------
+# =======================
+# STREAMLIT APP
+# =======================
+
 def main():
-    st.set_page_config(page_title="Chat with multiple PDFs", page_icon=":books:", layout="wide")
-
-    try:
-        st.write(css, unsafe_allow_html=True)
-    except Exception:
-        pass
+    st.set_page_config(page_title="Chat with PDFs", layout="wide")
+    st.write(css, unsafe_allow_html=True)
 
     if "conversation" not in st.session_state:
         st.session_state.conversation = None
-    if "chat_history" not in st.session_state:
-        st.session_state.chat_history = None
 
-    st.header("Chat with multiple PDFs :books:")
-    st.markdown("*Powered by Google Gemini AI*")
+    st.header("Chat with multiple PDFs")
 
-    api_key = None
-    try:
-        api_key = st.secrets["GOOGLE_API_KEY"]
-    except Exception:
-        api_key = os.getenv("GOOGLE_API_KEY")
+    user_question = st.text_input("Ask a question:")
 
-    if not api_key:
-        st.warning("⚠️ GOOGLE_API_KEY not found. LLM functionality will not work until it is set.")
-
-    user_question = st.text_input("Ask a question about your documents:")
-    if user_question:
-        if st.session_state.conversation is not None:
-            handle_userinput(user_question)
-        else:
-            st.warning("Please upload and process PDFs first!")
+    if user_question and st.session_state.conversation:
+        handle_userinput(user_question)
 
     with st.sidebar:
-        st.subheader("Your documents")
-        pdf_docs = st.file_uploader("Upload your PDFs here and click on 'Process'", accept_multiple_files=True, type=["pdf"])
+        st.subheader("Upload PDFs")
+        pdfs = st.file_uploader("Upload", type=["pdf"], accept_multiple_files=True)
 
         if st.button("Process"):
-            if pdf_docs:
-                with st.spinner("Processing your documents..."):
-                    raw_text = get_pdf_text(pdf_docs)
-                    if not raw_text.strip():
-                        st.error("No text could be extracted from the uploaded PDFs.")
-                    else:
-                        chunks = get_text_chunks(raw_text)
-                        st.info(f"Created {len(chunks)} text chunks")
-                        vs = get_vectorstore(chunks)
-                        st.session_state.conversation = get_conversation_chain(vs)
-                        st.success("Documents processed. Ask questions now!")
-            else:
-                st.warning("Please upload at least one PDF file.")
+            if pdfs:
+                with st.spinner("Processing..."):
+                    text = get_pdf_text(pdfs)
+                    chunks = get_text_chunks(text)
+                    vectorstore = get_vectorstore(chunks)
+                    st.session_state.conversation = get_conversation_chain(vectorstore)
 
-        if pdf_docs:
-            st.subheader("Uploaded Files:")
-            for pdf in pdf_docs:
-                st.write(f"📄 {pdf.name}")
+                    st.success("PDFs processed. Ask a question!")
+            else:
+                st.warning("Upload at least one PDF.")
+
+        if pdfs:
+            st.write("Uploaded files:")
+            for p in pdfs:
+                st.write("📄", p.name)
 
 
 if __name__ == "__main__":
     main()
-
 
 
 
