@@ -174,7 +174,8 @@ except ImportError as e:
     st.stop()
 
 try:
-    from langchain.text_splitter import CharacterTextSplitter
+    # from langchain.text_splitter import CharacterTextSplitter
+    from langchain_text_splitters import CharacterTextSplitter
     from langchain.memory import ConversationBufferMemory
     from langchain.chains import ConversationalRetrievalChain
     from langchain_community.vectorstores import FAISS
