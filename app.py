@@ -176,7 +176,8 @@ except ImportError as e:
 try:
     # from langchain.text_splitter import CharacterTextSplitter
     from langchain_text_splitters import CharacterTextSplitter
-    from langchain.memory import ConversationBufferMemory
+    from langchain_core.memory import ConversationBufferMemory
+    # from langchain.memory import ConversationBufferMemory
     from langchain.chains import ConversationalRetrievalChain
     from langchain_community.vectorstores import FAISS
     from langchain_community.embeddings import HuggingFaceEmbeddings
