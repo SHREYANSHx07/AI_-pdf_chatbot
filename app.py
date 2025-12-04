@@ -358,62 +358,83 @@
 import streamlit as st
 import os
 
-# ---------- Dependency imports with clear error messages ----------
+# ---------- Dependency imports with robust / backward-compatible fallbacks ----------
+# PyPDF2
 try:
     from PyPDF2 import PdfReader
 except ImportError as e:
     st.error(f"Failed to import PyPDF2: {e}")
-    st.error("Please check the requirements.txt file and ensure PyPDF2 is installed.")
+    st.error("Please ensure PyPDF2 is installed (pip install PyPDF2).")
     st.stop()
 
-# LangChain and related packages (robust import block)
+# CharacterTextSplitter: try new package first, fallback to older langchain import
 try:
-    # new splitters package
     from langchain_text_splitters import CharacterTextSplitter
-except ImportError as e:
-    st.error(f"Failed to import CharacterTextSplitter: {e}")
-    st.error("Install with: pip install langchain-text-splitters")
-    st.stop()
+except Exception:
+    try:
+        # older langchain layouts
+        from langchain.text_splitter import CharacterTextSplitter
+    except Exception as e:
+        st.error(f"Failed to import CharacterTextSplitter: {e}")
+        st.error("Install with: pip install langchain-text-splitters")
+        st.stop()
 
+# ConversationBufferMemory: try both new split package and older single-package layouts
 try:
-    # core langchain memory & chains
-    from langchain.memory import ConversationBufferMemory
+    # newer split layout (if installed)
+    from langchain_core.memory import ConversationBufferMemory
+except Exception:
+    try:
+        # older / common layout
+        from langchain.memory import ConversationBufferMemory
+    except Exception as e:
+        st.error(f"Failed to import ConversationBufferMemory: {e}")
+        st.error("Make sure a compatible langchain / langchain-core is installed.")
+        st.stop()
+
+# ConversationalRetrievalChain normally lives in langchain.chains
+try:
     from langchain.chains import ConversationalRetrievalChain
-except ImportError as e:
-    st.error(f"Failed to import langchain core modules: {e}")
-    st.error("Install with: pip install langchain")
+except Exception as e:
+    st.error(f"Failed to import ConversationalRetrievalChain: {e}")
+    st.error("Install langchain (pip install langchain) or a compatible version.")
     st.stop()
 
+# FAISS & HuggingFaceEmbeddings: try community package first, fallback if necessary
 try:
-    # community vectorstores & embeddings
     from langchain_community.vectorstores import FAISS
     from langchain_community.embeddings import HuggingFaceEmbeddings
-except ImportError as e:
-    st.error(f"Failed to import langchain_community modules: {e}")
-    st.error("Install with: pip install langchain-community")
-    st.stop()
+except Exception:
+    try:
+        # older langchain may expose these under langchain.vectorstores / langchain.embeddings
+        from langchain.vectorstores import FAISS
+        from langchain.embeddings import HuggingFaceEmbeddings
+    except Exception as e:
+        st.error(f"Failed to import FAISS or HuggingFaceEmbeddings: {e}")
+        st.error("Install langchain-community (pip install langchain-community) or ensure your langchain version supports these imports.")
+        st.stop()
 
+# Google GenAI wrapper (third-party). Keep as-is; change if your package name differs.
 try:
-    # Google GenAI wrapper (third-party)
     from langchain_google_genai import ChatGoogleGenerativeAI
-except ImportError as e:
+except Exception as e:
     st.error(f"Failed to import ChatGoogleGenerativeAI: {e}")
-    st.error("Install the package you use to access Google Generative AI (pip install <package-name>)")
+    st.error("Install the package you use to access Google Generative AI (pip install langchain-google-genai) or update import to your wrapper's name.")
     st.stop()
 
 # html templates for UI (make sure this file exists)
 try:
     from htmlTemplates import css, bot_template, user_template
-except ImportError as e:
+except Exception as e:
     st.error(f"Failed to import htmlTemplates: {e}")
-    st.error("Make sure htmlTemplates.py is in the same directory as app.py")
+    st.error("Make sure htmlTemplates.py is in the same directory as app.py and exports css, bot_template, user_template.")
     st.stop()
 
 # dotenv (optional)
 try:
     from dotenv import load_dotenv
     load_dotenv()
-except ImportError:
+except Exception:
     # not critical
     pass
 
@@ -423,50 +444,82 @@ def get_pdf_text(pdf_docs):
     """Extract text from uploaded PDF documents"""
     text = ""
     for pdf in pdf_docs:
+        # PdfReader accepts file-like objects from Streamlit uploader
         pdf_reader = PdfReader(pdf)
         for page in pdf_reader.pages:
-            page_text = page.extract_text()
+            try:
+                page_text = page.extract_text()
+            except Exception:
+                page_text = None
             if page_text:
                 text += page_text + "\n"
     return text
 
 
 def get_text_chunks(text, chunk_size=1000, chunk_overlap=200):
-    """Split text into manageable chunks for processing"""
+    """Split text into manageable chunks for processing (robust across langchain versions)"""
     text_splitter = CharacterTextSplitter(
         separator="\n",
         chunk_size=chunk_size,
         chunk_overlap=chunk_overlap,
         length_function=len
     )
-    # CharacterTextSplitter provides split_text or split_documents depending on version.
-    # We'll try split_text first, fallback to split_documents if available.
+
+    # Try common APIs in order
     try:
         return text_splitter.split_text(text)
     except Exception:
         try:
-            # some versions expect a list of docs
-            return text_splitter.split_documents([{"page_content": text}])
+            # some versions provide split_documents and expect Document objects or dicts
+            docs = [{"page_content": text}]
+            split = text_splitter.split_documents(docs)
+            # normalize: extract page_content back to strings if necessary
+            chunks = []
+            for d in split:
+                if isinstance(d, dict) and "page_content" in d:
+                    chunks.append(d["page_content"])
+                elif hasattr(d, "page_content"):
+                    chunks.append(d.page_content)
+                else:
+                    chunks.append(str(d))
+            return chunks
         except Exception:
-            # last resort: naive chunking
+            # Last resort: naive fixed-size chunking with overlap
             chunks = []
             start = 0
             text_len = len(text)
+            if text_len == 0:
+                return []
             while start < text_len:
                 end = min(start + chunk_size, text_len)
                 chunks.append(text[start:end])
-                start = end - chunk_overlap if end - chunk_overlap > start else end
+                if end == text_len:
+                    break
+                # move start forward by chunk_size - chunk_overlap
+                start = end - chunk_overlap
             return chunks
 
 
 def get_vectorstore(text_chunks, hf_model_name="sentence-transformers/all-MiniLM-L6-v2"):
-    """Create vector store from text chunks using HuggingFace embeddings"""
+    """Create vector store from text chunks using HuggingFace embeddings (robust to signature changes)"""
     embeddings = HuggingFaceEmbeddings(model_name=hf_model_name)
-    # Some versions accept `embedding` or `embeddings` argument name, so we try both.
+
+    # FAISS.from_texts signature differs across versions: try multiple possibilities
     try:
+        # common modern signature
         vectorstore = FAISS.from_texts(texts=text_chunks, embedding=embeddings)
     except TypeError:
-        vectorstore = FAISS.from_texts(texts=text_chunks, embeddings=embeddings)
+        try:
+            # some versions use 'embeddings' param name
+            vectorstore = FAISS.from_texts(texts=text_chunks, embeddings=embeddings)
+        except Exception:
+            try:
+                # fallback: create embeddings separately then build index
+                embs = embeddings.embed_documents(text_chunks)
+                vectorstore = FAISS.from_embeddings(embs, text_chunks)
+            except Exception as e:
+                st.error(f"Failed to create FAISS vectorstore: {e}")
+                st.stop()
     return vectorstore
 
 
@@ -476,32 +529,62 @@ def get_conversation_chain(vectorstore):
     api_key = None
     try:
         api_key = st.secrets["GOOGLE_API_KEY"]
-    except (KeyError, FileNotFoundError):
+    except Exception:
         api_key = os.getenv("GOOGLE_API_KEY")
 
     if not api_key:
         st.error("⚠️ Please set your GOOGLE_API_KEY in Streamlit secrets or environment variables")
         st.stop()
 
-    # Create LLM wrapper
-    llm = ChatGoogleGenerativeAI(
-        model="gemini-2.5-flash",  # adjust model name as desired/available
-        google_api_key=api_key,
-        temperature=0.3,
-        convert_system_message_to_human=True
-    )
+    # Create LLM wrapper - adapt args if your wrapper expects different names
+    try:
+        llm = ChatGoogleGenerativeAI(
+            model="gemini-2.5-flash",
+            google_api_key=api_key,
+            temperature=0.3,
+            convert_system_message_to_human=True
+        )
+    except TypeError:
+        # some wrappers may use 'api_key' or 'google_api_key' differently
+        try:
+            llm = ChatGoogleGenerativeAI(
+                model="gemini-2.5-flash",
+                api_key=api_key,
+                temperature=0.3,
+                convert_system_message_to_human=True
+            )
+        except Exception as e:
+            st.error(f"Failed to construct ChatGoogleGenerativeAI LLM: {e}")
+            st.stop()
+    except Exception as e:
+        st.error(f"Failed to construct ChatGoogleGenerativeAI LLM: {e}")
+        st.stop()
 
     memory = ConversationBufferMemory(
         memory_key='chat_history',
         return_messages=True
     )
 
-    # Build conversational retrieval chain
-    conversation_chain = ConversationalRetrievalChain.from_llm(
-        llm=llm,
-        retriever=vectorstore.as_retriever(),
-        memory=memory
-    )
+    # Build conversational retrieval chain (robust to from_llm signature differences)
+    try:
+        conversation_chain = ConversationalRetrievalChain.from_llm(
+            llm=llm,
+            retriever=vectorstore.as_retriever(),
+            memory=memory
+        )
+    except TypeError:
+        # older/newer signature mismatch fallback: pass retriever as first positional arg
+        try:
+            conversation_chain = ConversationalRetrievalChain.from_llm(
+                llm, vectorstore.as_retriever(), memory=memory
+            )
+        except Exception as e:
+            st.error(f"Failed to build ConversationalRetrievalChain: {e}")
+            st.stop()
+    except Exception as e:
+        st.error(f"Failed to build ConversationalRetrievalChain: {e}")
+        st.stop()
+
     return conversation_chain
 
 
@@ -529,7 +612,7 @@ def _display_chat_history(chat_history):
         else:
             content = str(message)
 
-        # Alternate user/bot template based on index (even user, odd bot) — adapt if your templates assume otherwise
+        # Alternate user/bot template based on index (even user, odd bot)
         if i % 2 == 0:
             st.write(user_template.replace("{{MSG}}", content), unsafe_allow_html=True)
         else:
@@ -541,22 +624,30 @@ def handle_userinput(user_question):
     try:
         # ConversationalRetrievalChain expects a dict with "question" key
         response = st.session_state.conversation({"question": user_question})
-        # response may contain 'answer' and 'chat_history' or 'result' etc.
-        chat_history = response.get("chat_history") or response.get("chat_history") or st.session_state.get("chat_history")
-        # store chat history if available
-        if chat_history is not None:
-            st.session_state.chat_history = chat_history
-        # show the final answer (if present)
-        final_answer = response.get("answer") or response.get("result") or response.get("response") or response.get("output")
-        if final_answer:
-            # print bot answer using bot template (append at end)
-            st.write(bot_template.replace("{{MSG}}", str(final_answer)), unsafe_allow_html=True)
-
-        # display the full history (if available)
-        _display_chat_history(st.session_state.get("chat_history"))
     except Exception as e:
-        st.error(f"Error processing your question: {str(e)}")
-        st.error("Please make sure your Google API key is valid and you have processed the PDFs.")
+        st.error(f"Conversation call failed: {e}")
+        return
+
+    # response structure varies by version; handle common fields
+    final_answer = None
+    chat_history = None
+
+    if isinstance(response, dict):
+        final_answer = response.get("answer") or response.get("result") or response.get("response") or response.get("output")
+        chat_history = response.get("chat_history") or response.get("history") or st.session_state.get("chat_history")
+    else:
+        # if response is a string or other object, display it directly
+        final_answer = str(response)
+
+    if final_answer:
+        st.write(bot_template.replace("{{MSG}}", str(final_answer)), unsafe_allow_html=True)
+
+    if chat_history is not None:
+        st.session_state.chat_history = chat_history
+        _display_chat_history(chat_history)
+    else:
+        # try to show whatever we have in session_state
+        _display_chat_history(st.session_state.get("chat_history"))
 
 
 # ---------- Streamlit app ----------
@@ -587,16 +678,13 @@ def main():
     api_key = None
     try:
         api_key = st.secrets["GOOGLE_API_KEY"]
-    except (KeyError, FileNotFoundError):
+    except Exception:
         api_key = os.getenv("GOOGLE_API_KEY")
 
     if not api_key:
-        st.error("⚠️ Please set your GOOGLE_API_KEY")
-        st.info("For local development: Add to .env file")
-        st.info("For Streamlit Cloud: Add to secrets management")
+        st.warning("⚠️ GOOGLE_API_KEY not found. Add it to Streamlit secrets or environment variables if you want to use the LLM.")
+        st.info("For local development: Add to a .env file or export GOOGLE_API_KEY in your shell.")
         st.info("Get your API key from: https://makersuite.google.com/app/apikey")
-        # Don't return immediately — allow file upload so user can process docs locally without LLM
-        # return
 
     user_question = st.text_input("Ask a question about your documents:")
     if user_question:
@@ -642,4 +730,5 @@ def main():
 
 if __name__ == '__main__':
     main()
+
 
