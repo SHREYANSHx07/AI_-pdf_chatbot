@@ -2,9 +2,9 @@ streamlit
 PyPDF2
 langchain
 langchain-community
-langchain-core
 langchain-google-genai
 google-generativeai
+langchain-text-splitters
 faiss-cpu
 tiktoken
 sentence-transformers
@@ -13,5 +13,3 @@ scipy
 scikit-learn
 requests
 python-dotenv
-langchain-text-splitters
-
